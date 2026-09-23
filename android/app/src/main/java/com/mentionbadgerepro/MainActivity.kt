@@ -1,4 +1,4 @@
-package com.mypushv3
+package com.mentionbadgerepro
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

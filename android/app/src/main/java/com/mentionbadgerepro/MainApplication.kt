@@ -1,4 +1,4 @@
-package com.mypushv3
+package com.mentionbadgerepro
 
 import android.app.Application
 import com.facebook.react.PackageList

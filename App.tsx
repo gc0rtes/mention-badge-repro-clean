@@ -70,9 +70,10 @@ const CustomChannelPreview = ({ channel }: { channel: StreamChannel }) => {
   const mentionCount = channel.countUnreadMentions();
   const unreadCount = channel.countUnread();
   const lastRead = channel.state.read[chatUserId]?.last_read;
+  const clientUserId = channel.getClient().userID;
 
   console.log(
-    `[mention-debug] render cid=${channel.cid} mentionCount=${mentionCount} unreadCount=${unreadCount} lastRead=${lastRead} lastMessage=${lastMessage?.text} @ ${new Date().toISOString()}`,
+    `[mention-debug] render cid=${channel.cid} clientUserId=${clientUserId} mentionCount=${mentionCount} unreadCount=${unreadCount} lastRead=${lastRead} readState=${JSON.stringify(channel.state.read)} lastMessage=${lastMessage?.text} @ ${new Date().toISOString()}`,
   );
 
   return (
@@ -128,6 +129,12 @@ const previewStyles = StyleSheet.create({
   badgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
 });
 
+const NOISY_EVENT_TYPES = new Set([
+  'health.check',
+  'typing.start',
+  'typing.stop',
+]);
+
 const ChannelListScreen = (props: any) => {
   const { navigation } = props;
   const { setChannel } = useAppContext();
@@ -148,31 +155,25 @@ const ChannelListScreen = (props: any) => {
     watch: true,
   };
 
-  // DEBUG REPRO: log every read-related event for this user's channels, so we
-  // can correlate a mention badge disappearing with the exact event that
-  // caused channel.state.read to update.
+  // DEBUG REPRO: log EVERY client event (not just the read-related ones), so
+  // we can catch any event we weren't already filtering for (e.g. a
+  // notification.mark_read with no `cid` that resets state.unreadCount for
+  // every active channel client-wide, see stream-chat's _handleClientEvent)
+  // that lands in the same window as a mention badge resetting to 0.
   useEffect(() => {
     const client = StreamChat.getInstance(chatApiKey);
-    const eventTypes = [
-      'message.new',
-      'message.read',
-      'notification.mark_read',
-      'notification.mark_unread',
-    ] as const;
-    const subscriptions = eventTypes.map(type =>
-      client.on(type, event => {
-        const channel = event.cid
-          ? client.channel(
-              event.cid.split(':')[0],
-              event.cid.split(':')[1],
-            )
-          : undefined;
-        console.log(
-          `[mention-debug] event=${type} cid=${event.cid} fromUser=${event.user?.id} mentionCount=${channel?.countUnreadMentions?.()} lastRead=${channel?.state?.read?.[chatUserId]?.last_read} @ ${new Date().toISOString()}`,
-        );
-      }),
-    );
-    return () => subscriptions.forEach(s => s.unsubscribe());
+    const subscription = client.on(event => {
+      if (NOISY_EVENT_TYPES.has(event.type)) return;
+      // `cid` is `'*'` on events like `health.check` that aren't scoped to a
+      // real channel — only resolve a channel for an actual `type:id` cid.
+      const [cidType, cidId] = event.cid?.split(':') ?? [];
+      const channel =
+        cidType && cidId ? client.channel(cidType, cidId) : undefined;
+      console.log(
+        `[mention-debug] event=${event.type} cid=${event.cid} fromUser=${event.user?.id} clientUserId=${client.userID} unread_channels=${event.unread_channels} mentionCount=${channel?.countUnreadMentions?.()} lastRead=${channel?.state?.read?.[chatUserId]?.last_read} readState=${channel ? JSON.stringify(channel.state.read) : undefined} @ ${new Date().toISOString()}`,
+      );
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
