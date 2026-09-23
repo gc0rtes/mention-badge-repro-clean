@@ -39,8 +39,7 @@ function generateJWT(payload, secret) {
 }
 
 const payload = {
-  user_id: userId,
-  exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24 hours from now
+  user_id: userId  
 };
 
 console.log('Generated token for user:', userId);
